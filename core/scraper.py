@@ -2,7 +2,6 @@ import requests
 import time
 
 HEADERS = {"User-Agent": "fantasybball-digest-bot/1.0 (personal project)"}
-
 SUBREDDITS = ["fantasybball", "nba"]
 
 def fetch_posts(subreddit, sort="hot", limit=75, time_filter=None):
@@ -25,14 +24,16 @@ def fetch_posts(subreddit, sort="hot", limit=75, time_filter=None):
                 "flair": p.get("link_flair_text", ""),
                 "url": p.get("url", ""),
                 "num_comments": p.get("num_comments", 0),
+                "id": p.get("id", ""),
+                "subreddit": subreddit,
             })
         return posts
     except Exception as e:
         print(f"Error fetching r/{subreddit}: {e}")
         return []
 
-def fetch_top_comments(subreddit, post_id, limit=5):
-    url = f"https://www.reddit.com/r/{subreddit}/comments/{post_id}.json?limit={limit}"
+def fetch_top_comments(subreddit, post_id, limit=8):
+    url = f"https://www.reddit.com/r/{subreddit}/comments/{post_id}.json?limit={limit}&depth=1"
     try:
         res = requests.get(url, headers=HEADERS, timeout=10)
         res.raise_for_status()
@@ -40,10 +41,15 @@ def fetch_top_comments(subreddit, post_id, limit=5):
         comments = []
         for c in data[1]["data"]["children"]:
             body = c["data"].get("body", "")
-            if body and len(body) > 20:
-                comments.append(body[:300])
+            score = c["data"].get("score", 0)
+            # Skip deleted, removed, short, or downvoted comments
+            if not body or body in ("[deleted]", "[removed]"):
+                continue
+            if len(body) < 30 or score < 2:
+                continue
+            comments.append(body[:400])
         return comments
-    except:
+    except Exception as e:
         return []
 
 def scrape_all():
@@ -68,5 +74,22 @@ def scrape_all():
             seen.add(p["title"])
             unique.append(p)
 
-    print(f"Fetched {len(unique)} unique posts.")
+    # Fetch comments for high-engagement posts
+    print(f"Fetching comments for high-engagement posts...")
+    high_value = [p for p in unique if p["score"] >= 10 and p["num_comments"] >= 5]
+    print(f"  Found {len(high_value)} posts with score >= 10")
+
+    for i, post in enumerate(high_value[:30]):  # cap at 15 posts to avoid rate limiting
+        comments = fetch_top_comments(post["subreddit"], post["id"], limit=5)
+        post["comments"] = comments
+        if comments:
+            print(f"  [{i+1}] '{post['title'][:50]}...' — {len(comments)} comments")
+        time.sleep(1.5)  # polite delay between comment fetches
+
+    # Posts without comments get empty list
+    for p in unique:
+        if "comments" not in p:
+            p["comments"] = []
+
+    print(f"Fetched {len(unique)} unique posts total.")
     return unique

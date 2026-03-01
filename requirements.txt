@@ -4,3 +4,4 @@ python-dotenv
 markdown
 espn_api
 google-genai
+nba_api
