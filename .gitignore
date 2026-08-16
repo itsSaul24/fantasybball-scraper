@@ -7,3 +7,4 @@ tests/
 digest.db
 draft_scrape_cache.json
 draft_plan.xlsx
+draft_plan_*.xlsx

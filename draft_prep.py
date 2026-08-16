@@ -23,6 +23,7 @@ from core.positions import (
     get_position_map, attach_positions, positional_scarcity, format_scarcity_for_prompt,
 )
 from core.player_history import get_multiyear_history, attach_history, add_rate_metrics
+from core.dream_draft import build_position_board, budget_shape, strategy_notes
 from core.excel_export import write_draft_workbook
 from core.db import start_run, finish_run
 
@@ -159,7 +160,17 @@ def run_draft_prep(run_id, start_time):
 
     out.to_csv(OUTPUT_CSV, index=False)
     duration = time.time() - start_time
-    write_draft_workbook(out, OUTPUT_XLSX, scarcity_text=scarcity_text, meta={
+
+    board = build_position_board(out)
+    extra = {
+        "Draft Board": board,
+        "Budget Shape": budget_shape(board),
+        "Draft Strategy": strategy_notes(board),
+    }
+    print(f"  Draft board: {len(board)} targets across "
+          f"{board['Position'].nunique()} positions")
+
+    written = write_draft_workbook(out, OUTPUT_XLSX, scarcity_text=scarcity_text, extra_sheets=extra, meta={
         "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "players": len(out),
         "rookies": int(out["is_rookie"].sum()) if "is_rookie" in out else 0,
@@ -179,7 +190,7 @@ def run_draft_prep(run_id, start_time):
         estimated_cost_usd=total_cost,
     )
 
-    print(f"\n✅ Draft plan written to {OUTPUT_XLSX} and {OUTPUT_CSV} "
+    print(f"\n✅ Draft plan written to {written} and {OUTPUT_CSV} "
           f"({len(out)} players, {duration/60:.1f} min, ${total_cost:.4f} total cost)")
 
 if __name__ == "__main__":

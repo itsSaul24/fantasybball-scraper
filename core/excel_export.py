@@ -1,3 +1,6 @@
+import os
+from datetime import datetime
+
 import pandas as pd
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
@@ -74,7 +77,21 @@ def _style_header(ws):
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
 
-def write_draft_workbook(df, path, scarcity_text="", meta=None):
+def _resolve_path(path):
+    """Excel holds an exclusive lock on an open workbook. Rather than lose a two-hour run
+    to a PermissionError, fall back to a timestamped filename and say so."""
+    if not os.path.exists(path):
+        return path, False
+    try:
+        with open(path, "a+b"):
+            return path, False
+    except PermissionError:
+        stem, ext = os.path.splitext(path)
+        alt = f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M')}{ext}"
+        print(f"  ⚠️  {path} is open in Excel — writing to {alt} instead.")
+        return alt, True
+
+def write_draft_workbook(df, path, scarcity_text="", meta=None, extra_sheets=None):
     """Writes the draft plan as a multi-tab workbook: the plan itself, a column guide,
     quick-reference target/fade views, and the run's provenance."""
     present = [c for c in df.columns]
@@ -96,7 +113,14 @@ def write_draft_workbook(df, path, scarcity_text="", meta=None):
                               "steal", "target", "walk_away", "mechanical_value",
                               "career_arc", "why", "live_note"] if c in df.columns]
 
+    path, redirected = _resolve_path(path)
+    # Ordered so the board you actually draft from is the first thing you see.
+    sheets = list((extra_sheets or {}).items())
+    wide = {name for name, _ in sheets}
+
     with pd.ExcelWriter(path, engine="openpyxl") as xl:
+        for name, frame in sheets:
+            frame.to_excel(xl, sheet_name=name, index=False)
         df.to_excel(xl, sheet_name="Draft Plan", index=False)
         guide.to_excel(xl, sheet_name="Column Guide", index=False)
         targets[short_cols].to_excel(xl, sheet_name="Bargain Targets", index=False)
@@ -111,10 +135,16 @@ def write_draft_workbook(df, path, scarcity_text="", meta=None):
             xl, sheet_name="Run Info", index=False
         )
 
-        for name in ("Draft Plan", "Column Guide", "Bargain Targets", "Fades", "Run Info"):
+        for name in [*wide, "Draft Plan", "Column Guide", "Bargain Targets", "Fades", "Run Info"]:
             ws = xl.book[name]
             _style_header(ws)
             _autosize(ws)
+            if name in wide:
+                for row in ws.iter_rows(min_row=2):
+                    for c in row:
+                        c.alignment = Alignment(vertical="top", wrap_text=True)
+                for letter, width in (("A", 12), ("B", 12), ("C", 22)):
+                    ws.column_dimensions[letter].width = width
 
         # Long prose columns need a fixed width or they blow out the sheet.
         plan = xl.book["Draft Plan"]
