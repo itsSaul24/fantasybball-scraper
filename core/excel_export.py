@@ -91,68 +91,96 @@ def _resolve_path(path):
         print(f"  ⚠️  {path} is open in Excel — writing to {alt} instead.")
         return alt, True
 
-def write_draft_workbook(df, path, scarcity_text="", meta=None, extra_sheets=None):
-    """Writes the draft plan as a multi-tab workbook: the plan itself, a column guide,
-    quick-reference target/fade views, and the run's provenance."""
-    present = [c for c in df.columns]
-    guide_rows, seen = [], set()
-    for col, group, meaning, use in COLUMN_GUIDE:
+def _build_legend(df, strategy=None, budget=None, scarcity_text="", meta=None):
+    """One reference sheet: what every column means, then the strategy, budget and run
+    notes as labelled sections underneath. Keeping these together avoids a tab per idea."""
+    present = list(df.columns)
+    rows, seen = [], set()
+    rows.append({"Section": "COLUMNS", "Item": "", "Detail": ""})
+    for col, _group, meaning, use in COLUMN_GUIDE:
         if col in present and col not in seen and meaning:
             seen.add(col)
-            guide_rows.append({"Column": col, "Group": group, "What it means": meaning,
-                               "How to use it": use})
-    # Surface any column that exists but was never documented.
+            detail = f"{meaning} {('— ' + use) if use else ''}".strip()
+            rows.append({"Section": "", "Item": col, "Detail": detail})
     for col in present:
         if col not in seen:
-            guide_rows.append({"Column": col, "Group": "Other", "What it means": "", "How to use it": ""})
-    guide = pd.DataFrame(guide_rows)
+            rows.append({"Section": "", "Item": col, "Detail": ""})
 
-    targets = df[(df.get("market_vs_value") == "underrated")].head(60)
-    fades = df[(df.get("market_vs_value") == "overhyped")].head(60)
-    short_cols = [c for c in ["rank", "player", "position", "team", "tier", "trend",
-                              "steal", "target", "walk_away", "mechanical_value",
-                              "career_arc", "why", "live_note"] if c in df.columns]
+    if strategy is not None and not strategy.empty:
+        rows.append({"Section": "", "Item": "", "Detail": ""})
+        rows.append({"Section": "STRATEGY", "Item": "", "Detail": ""})
+        for _, r in strategy.iterrows():
+            rows.append({"Section": "", "Item": r["Principle"], "Detail": r["Detail"]})
 
-    path, redirected = _resolve_path(path)
-    # Ordered so the board you actually draft from is the first thing you see.
-    sheets = list((extra_sheets or {}).items())
-    wide = {name for name, _ in sheets}
+    if budget is not None and not budget.empty:
+        rows.append({"Section": "", "Item": "", "Detail": ""})
+        rows.append({"Section": "BUDGET", "Item": "", "Detail": ""})
+        for _, r in budget.iterrows():
+            label = r["If you land every"]
+            cost = r["Cost of 5 base slots"]
+            item = f"All {label}" if label != "READ THIS" else "Bottom line"
+            detail = f"{('5 base slots cost $' + str(cost) + '. ') if cost != '' else ''}{r['Verdict']}"
+            rows.append({"Section": "", "Item": item, "Detail": detail})
+
+    if scarcity_text:
+        rows.append({"Section": "", "Item": "", "Detail": ""})
+        rows.append({"Section": "POSITIONAL SUPPLY", "Item": "", "Detail": ""})
+        for line in scarcity_text.split("\n")[1:]:
+            if line.strip():
+                part = line.strip().split(":", 1)
+                rows.append({"Section": "", "Item": part[0],
+                             "Detail": part[1].strip() if len(part) > 1 else ""})
+
+    if meta:
+        rows.append({"Section": "", "Item": "", "Detail": ""})
+        rows.append({"Section": "RUN INFO", "Item": "", "Detail": ""})
+        for k, v in meta.items():
+            rows.append({"Section": "", "Item": str(k), "Detail": str(v)})
+
+    return pd.DataFrame(rows)
+
+def write_draft_workbook(df, path, scarcity_text="", meta=None, board=None,
+                         strategy=None, budget=None):
+    """Three sheets, in the order you use them: the positional board you draft from,
+    the full player pool, and a single reference sheet."""
+    present = list(df.columns)
+    legend = _build_legend(df, strategy=strategy, budget=budget,
+                           scarcity_text=scarcity_text, meta=meta)
+    path, _ = _resolve_path(path)
 
     with pd.ExcelWriter(path, engine="openpyxl") as xl:
-        for name, frame in sheets:
-            frame.to_excel(xl, sheet_name=name, index=False)
-        df.to_excel(xl, sheet_name="Draft Plan", index=False)
-        guide.to_excel(xl, sheet_name="Column Guide", index=False)
-        targets[short_cols].to_excel(xl, sheet_name="Bargain Targets", index=False)
-        fades[short_cols].to_excel(xl, sheet_name="Fades", index=False)
+        if board is not None and not board.empty:
+            board.to_excel(xl, sheet_name="Dream Team", index=False)
+        df.to_excel(xl, sheet_name="All Players", index=False)
+        legend.to_excel(xl, sheet_name="Legend", index=False)
 
-        info = [("Generated", meta.get("generated", "") if meta else "")]
-        if meta:
-            info += [(k, v) for k, v in meta.items() if k != "generated"]
-        if scarcity_text:
-            info += [("", "")] + [(line.strip(), "") for line in scarcity_text.split("\n")]
-        pd.DataFrame(info, columns=["Item", "Value"]).to_excel(
-            xl, sheet_name="Run Info", index=False
-        )
-
-        for name in [*wide, "Draft Plan", "Column Guide", "Bargain Targets", "Fades", "Run Info"]:
+        for name in xl.book.sheetnames:
             ws = xl.book[name]
             _style_header(ws)
             _autosize(ws)
-            if name in wide:
-                for row in ws.iter_rows(min_row=2):
-                    for c in row:
-                        c.alignment = Alignment(vertical="top", wrap_text=True)
-                for letter, width in (("A", 12), ("B", 12), ("C", 22)):
-                    ws.column_dimensions[letter].width = width
+
+        if "Dream Team" in xl.book.sheetnames:
+            ws = xl.book["Dream Team"]
+            for row in ws.iter_rows(min_row=2):
+                for c in row:
+                    c.alignment = Alignment(vertical="top", wrap_text=True)
+            for letter, width in (("A", 10), ("B", 11), ("C", 22), ("M", 55), ("N", 45)):
+                ws.column_dimensions[letter].width = width
 
         # Long prose columns need a fixed width or they blow out the sheet.
-        plan = xl.book["Draft Plan"]
+        players = xl.book["All Players"]
         for col_name in ("community_read", "why", "risk", "live_note", "trajectory"):
             if col_name in present:
-                letter = get_column_letter(present.index(col_name) + 1)
-                plan.column_dimensions[letter].width = 60
-        guide_ws = xl.book["Column Guide"]
-        guide_ws.column_dimensions["C"].width = 62
-        guide_ws.column_dimensions["D"].width = 62
+                players.column_dimensions[get_column_letter(present.index(col_name) + 1)].width = 60
+
+        lg = xl.book["Legend"]
+        lg.column_dimensions["A"].width = 20
+        lg.column_dimensions["B"].width = 24
+        lg.column_dimensions["C"].width = 110
+        for row in lg.iter_rows(min_row=2):
+            row[2].alignment = Alignment(vertical="top", wrap_text=True)
+            if row[0].value:                       # section header rows
+                for c in row:
+                    c.font = Font(bold=True, size=11)
+                    c.fill = GROUP_FILL
     return path

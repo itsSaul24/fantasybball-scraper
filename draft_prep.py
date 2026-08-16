@@ -162,24 +162,26 @@ def run_draft_prep(run_id, start_time):
     duration = time.time() - start_time
 
     board = build_position_board(out)
-    extra = {
-        "Draft Board": board,
-        "Budget Shape": budget_shape(board),
-        "Draft Strategy": strategy_notes(board),
-    }
-    print(f"  Draft board: {len(board)} targets across "
+    print(f"  Dream Team board: {len(board)} targets across "
           f"{board['Position'].nunique()} positions")
 
-    written = write_draft_workbook(out, OUTPUT_XLSX, scarcity_text=scarcity_text, extra_sheets=extra, meta={
-        "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "players": len(out),
-        "rookies": int(out["is_rookie"].sum()) if "is_rookie" in out else 0,
-        "reddit posts in corpus": len(posts),
-        "chunks searched": sem_stats.get("chunks", 0),
-        "LLM model": "gemini-3.7-flash (thinking: high)",
-        "estimated cost USD": round(total_cost, 4),
-        "runtime minutes": round(duration / 60, 1),
-    })
+    written = write_draft_workbook(
+        out, OUTPUT_XLSX,
+        scarcity_text=scarcity_text,
+        board=board,
+        strategy=strategy_notes(board),
+        budget=budget_shape(board),
+        meta={
+            "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "players": len(out),
+            "rookies": int(out["is_rookie"].sum()) if "is_rookie" in out else 0,
+            "reddit posts in corpus": len(posts),
+            "chunks searched": sem_stats.get("chunks", 0),
+            "LLM model": "gemini-3.7-flash (thinking: high)",
+            "estimated cost USD": round(total_cost, 4),
+            "runtime minutes": round(duration / 60, 1),
+        },
+    )
 
     finish_run(
         run_id,
