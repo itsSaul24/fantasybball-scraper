@@ -27,22 +27,16 @@ def log_reddit_scrape(posts):
     log_section("REDDIT SCRAPE DETAILS")
     log(f"Total unique posts: {len(posts)}")
     log(f"Search parameters:")
-    log(f"  - r/fantasybball: hot (75), top?t=day (50), new (50)")
-    log(f"  - r/nba: top?t=day (30)")
-    log(f"  - Score filter: > 10 upvotes")
+    log(f"  - r/fantasybball: hot (40), new (25) [via RSS, no vote scores available]")
+    log(f"  - r/nba: top?t=day (25)")
     log(f"  - Body truncated to: 600 chars")
     log(f"")
-    flairs = {}
-    for p in posts:
-        flair = p.get("flair") or "No Flair"
-        flairs[flair] = flairs.get(flair, 0) + 1
-    log(f"Post breakdown by flair:")
-    for flair, count in sorted(flairs.items(), key=lambda x: -x[1])[:10]:
-        log(f"  [{count}] {flair}")
+    with_comments = [p for p in posts if p.get("comments")]
+    log(f"Posts with comments fetched: {len(with_comments)}")
     log(f"")
-    log(f"Top 5 posts by score:")
-    for p in sorted(posts, key=lambda x: x["score"], reverse=True)[:5]:
-        log(f"  ({p['score']}) {p['title'][:80]}")
+    log(f"First 5 posts (hot-ranked order):")
+    for p in posts[:5]:
+        log(f"  {p['title'][:80]}")
 
 def log_roster(roster):
     log_section("ROSTER PLAYERS")
@@ -75,6 +69,7 @@ def log_run_summary(posts, free_agents, roster, free_agents_text, roster_text, p
 
 def log_token_usage(token_usage):
     if token_usage["total_tokens"] > 0:
-        log(f"Token usage (Gemini) — Input: {token_usage['prompt_tokens']:,} | Output: {token_usage['output_tokens']:,} | Total: {token_usage['total_tokens']:,}")
+        thinking = token_usage.get("thinking_tokens", 0)
+        log(f"Token usage (Gemini) — Input: {token_usage['prompt_tokens']:,} | Output: {token_usage['output_tokens']:,} | Thinking: {thinking:,} | Total: {token_usage['total_tokens']:,}")
     else:
         log("Token usage — N/A (Ollama, no token tracking)")

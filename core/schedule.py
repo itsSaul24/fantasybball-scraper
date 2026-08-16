@@ -34,7 +34,7 @@ def get_team_games_this_week():
     print(f"  Fetching schedule for week: {monday} to {sunday}")
 
     try:
-        schedule = ScheduleLeagueV2(season="2025-26", league_id="00")
+        schedule = ScheduleLeagueV2(season="2026-27", league_id="00")
         time.sleep(1)
         df = schedule.get_data_frames()[0]
     except Exception as e:

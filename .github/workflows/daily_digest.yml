@@ -21,9 +21,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Restore digest database (for daily budget tracking)
+        uses: actions/cache@v4
+        with:
+          path: digest.db
+          key: digest-db-${{ github.run_id }}
+          restore-keys: |
+            digest-db-
+
       - name: Run digest
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
-          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ESPN_LEAGUE_ID: ${{ secrets.ESPN_LEAGUE_ID }}
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          DAILY_BUDGET_USD: "2.00"
         run: python main.py

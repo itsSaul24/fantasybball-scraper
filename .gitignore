@@ -4,3 +4,6 @@ venv
 __pycache__
 logs/
 tests/
+digest.db
+draft_scrape_cache.json
+draft_plan.xlsx

@@ -4,8 +4,12 @@ from dotenv import load_dotenv
 from datetime import datetime
 load_dotenv()
 
+from core.league_rules import format_scoring_for_prompt
+
 # ─── TOGGLE HERE ───────────────────────────────────────────
 LLM_PROVIDER = "gemini"  # "ollama" or "gemini"
+GEMINI_MODEL = "gemini-3.7-flash"
+GEMINI_THINKING_LEVEL = "medium"  # "low", "medium", "high"
 OLLAMA_MODEL = "qwen3:8b"
 OLLAMA_URL   = "http://localhost:11434/api/generate"
 MAX_PROMPT_CHARS = 100_000
@@ -14,6 +18,7 @@ MAX_PROMPT_CHARS = 100_000
 last_token_usage = {
     "prompt_tokens": 0,
     "output_tokens": 0,
+    "thinking_tokens": 0,
     "total_tokens": 0,
 }
 
@@ -28,17 +33,24 @@ def get_current_week():
         print(f"  Warning: Could not get current week: {e}")
         return "Unknown"
 
-def ask_gemini(prompt):
+def ask_gemini(prompt, thinking_level=None):
     from google import genai
+    from google.genai import types
     client = genai.Client(api_key=os.environ["GEMINI_KEY"])
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(
+                thinking_level=thinking_level or GEMINI_THINKING_LEVEL
+            )
+        ),
     )
     if hasattr(response, "usage_metadata") and response.usage_metadata:
-        last_token_usage["prompt_tokens"] = getattr(response.usage_metadata, "prompt_token_count", 0)
-        last_token_usage["output_tokens"] = getattr(response.usage_metadata, "candidates_token_count", 0)
-        last_token_usage["total_tokens"] = getattr(response.usage_metadata, "total_token_count", 0)
+        last_token_usage["prompt_tokens"] = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+        last_token_usage["output_tokens"] = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+        last_token_usage["thinking_tokens"] = getattr(response.usage_metadata, "thoughts_token_count", 0) or 0
+        last_token_usage["total_tokens"] = getattr(response.usage_metadata, "total_token_count", 0) or 0
     return response.text
 
 def ask_ollama(prompt):
@@ -58,7 +70,7 @@ def ask(prompt):
 def format_posts_for_prompt(posts):
     lines = []
     for p in posts:
-        line = f"[{p['flair'] or 'General'}] {p['title']} (score: {p['score']})"
+        line = f"[{p['flair'] or 'General'}] {p['title']}"
         if p["body"]:
             line += f"\n  {p['body']}"
         comments = p.get("comments", [])
@@ -69,8 +81,8 @@ def format_posts_for_prompt(posts):
         lines.append(line)
     return "\n\n".join(lines)
 
-def truncate_to_limit(posts_text, free_agents_text, roster_text, matchup_text=""):
-    static_chars = len(free_agents_text) + len(roster_text) + len(matchup_text)
+def truncate_to_limit(posts_text, free_agents_text, roster_text, matchup_text="", activity_text=""):
+    static_chars = len(free_agents_text) + len(roster_text) + len(matchup_text) + len(activity_text)
     available_for_posts = MAX_PROMPT_CHARS - static_chars
     if len(posts_text) > available_for_posts:
         print(f"  ⚠️ Truncating posts: {len(posts_text):,} → {available_for_posts:,} chars")
@@ -79,28 +91,34 @@ def truncate_to_limit(posts_text, free_agents_text, roster_text, matchup_text=""
     print(f"  Total prompt chars: {total:,} / {MAX_PROMPT_CHARS:,}")
     return posts_text
 
-def run_analysis(posts, free_agents_text, roster_text, matchup_text=""):
+def run_analysis(posts, free_agents_text, roster_text, matchup_text="", activity_text=""):
     posts_text = format_posts_for_prompt(posts)
     today = datetime.now().strftime("%B %d, %Y")
     current_week = get_current_week()
     next_week = current_week + 1 if isinstance(current_week, int) else "Unknown"
 
-    posts_text = truncate_to_limit(posts_text, free_agents_text, roster_text, matchup_text)
+    posts_text = truncate_to_limit(posts_text, free_agents_text, roster_text, matchup_text, activity_text)
 
     prompt = f"""
 You are an expert fantasy basketball analyst. Today is {today}, Week {current_week} of the fantasy season.
-This is a POINTS league — total fantasy points is all that matters, not categories.
-We are in or approaching the fantasy playoffs so every decision is critical.
+
+{format_scoring_for_prompt()}
+
+Total fantasy points is all that matters — there are no categories. Evaluate every player
+against the scoring table above, not against generic fantasy rankings.
 
 You have been given:
-1. My current roster with avg points and weekly schedule
-2. Available free agents with avg points and weekly schedule
+1. My current roster with avg points, recent-form trend, and weekly schedule
+2. Available free agents with avg points, recent-form trend, and weekly schedule
 3. Current matchup details including live scores, my lineup, and my opponent's full roster
-4. Today's Reddit posts from r/fantasybball and r/nba (including top comments)
+4. Recent transactions from other teams in my specific league (who they're adding/dropping)
+5. Today's Reddit posts from r/fantasybball and r/nba (including top comments)
 
 KEY RULES:
 - Use Reddit posts and comments as your PRIMARY source of insight
 - Avg fantasy points is CONTEXT only — trending players beat high-avg players who lost minutes
+- Where shown, "L10" is a player's last-10-game average vs their season average — a big positive gap means a hot streak, a big negative gap means a cooling-off/role change. If a player has no L10 tag, no recent-game data is available yet (e.g. season hasn't started).
+- League transactions show what YOUR leaguemates are already doing — if someone's already been added by another team, don't recommend them; flag them as unavailable and suggest an alternative
 - Weekly game count is CRITICAL — a player with 4 games often outscores a better player with 2 games
 - ONLY recommend free agent adds from the FREE AGENTS LIST
 - PAY ATTENTION TO THE TIMING NOTE in the matchup section — if it's Sunday, recommend for NEXT WEEK only
@@ -109,6 +127,10 @@ KEY RULES:
 ---
 
 {matchup_text}
+
+---
+
+{activity_text}
 
 ---
 
