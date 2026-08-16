@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
@@ -36,6 +37,28 @@ def _post_message(channel_id, token, content):
         timeout=15,
     )
     res.raise_for_status()
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024   # Discord's limit for non-boosted servers
+
+def send_file(file_path, message=""):
+    """Uploads a file to the configured channel. Handy for getting the workbook onto a
+    phone without setting up mail."""
+    token = os.environ["DISCORD_BOT_TOKEN"]
+    channel_id = os.environ["DISCORD_CHANNEL_ID"]
+    size = os.path.getsize(file_path)
+    if size > MAX_UPLOAD_BYTES:
+        raise ValueError(f"{file_path} is {size/1024/1024:.1f} MB — over Discord's 10 MB limit")
+
+    with open(file_path, "rb") as fh:
+        res = requests.post(
+            f"{DISCORD_API}/channels/{channel_id}/messages",
+            headers={"Authorization": f"Bot {token}"},
+            data={"payload_json": json.dumps({"content": message})},
+            files={"files[0]": (os.path.basename(file_path), fh)},
+            timeout=60,
+        )
+    res.raise_for_status()
+    print(f"✅ Sent {os.path.basename(file_path)} ({size/1024:.0f} KB) to Discord")
 
 def send_notice(text):
     token = os.environ["DISCORD_BOT_TOKEN"]
