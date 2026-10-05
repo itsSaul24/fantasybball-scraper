@@ -173,6 +173,24 @@ def player_mention_history(player_id, days=45):
     conn.close()
     return [dict(r) for r in rows]
 
+def stored_comments_by_post():
+    """{post_id: [comment text]} for every post whose comments are already archived.
+    A comment thread costs ~50s of Reddit rate limit to fetch, so a re-scrape skips threads
+    it already has and re-attaches the stored text instead."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT post_id, title, text FROM documents WHERE kind = 'comment' AND post_id IS NOT NULL"
+    ).fetchall()
+    conn.close()
+    out = {}
+    for r in rows:
+        text = r["text"]
+        prefix = f"[re: {r['title']}] " if r["title"] else ""
+        if prefix and text.startswith(prefix):
+            text = text[len(prefix):]
+        out.setdefault(r["post_id"], []).append(text)
+    return out
+
 def store_stats():
     conn = _connect()
     stats = {

@@ -34,6 +34,7 @@ LLM_REFINE_TOP_N = None     # None = analyze the entire pool
 BATCH_SIZE = 10             # smaller batches = more context room per player
 COMMENT_FETCH_LIMIT = 110   # comments carry the real analysis; main quality lever
 SCRAPE_CACHE = "draft_scrape_cache.json"
+SCRAPE_CHECKPOINT = "draft_scrape_checkpoint.json"
 CACHE_MAX_AGE_HOURS = 24
 MIN_CACHE_COMMENTS = 300    # a cache from the old shallow scrape is not worth reusing
 MIN_CACHE_DATED = 0.5       # re-scrape if most cached posts predate publish-date capture
@@ -111,8 +112,13 @@ def run_draft_prep(run_id, start_time):
         n_comments = sum(len(p.get("comments", [])) for p in posts)
         print(f"  Using cached scrape ({len(posts)} posts, {n_comments} comments, <{CACHE_MAX_AGE_HOURS}h old)")
     else:
-        posts = scrape_for_draft(comment_fetch_limit=COMMENT_FETCH_LIMIT)
+        # Checkpointed, so a killed run resumes instead of starting the two-hour scrape over.
+        posts, _ = scrape_for_draft(
+            comment_fetch_limit=COMMENT_FETCH_LIMIT, checkpoint_path=SCRAPE_CHECKPOINT
+        )
         _save_cached_posts(posts)
+        if os.path.exists(SCRAPE_CHECKPOINT):
+            os.remove(SCRAPE_CHECKPOINT)
 
     # Incoming rookies have no box score, so they never appear in the stats pool. Carry
     # forward only the ones the community actually discusses — if Reddit is silent on a
