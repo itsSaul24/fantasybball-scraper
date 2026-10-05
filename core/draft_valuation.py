@@ -36,9 +36,15 @@ def get_player_pool():
 
     current_team = dict(zip(current["PERSON_ID"], current["TEAM_ABBREVIATION"]))
     active_ids = set(current["PERSON_ID"])
+    last_gp = dict(zip(stats["PLAYER_ID"], stats["GP"]))
+    raw_prior = prior.copy()
 
     stats = stats[(stats["GP"] >= MIN_GAMES_PLAYED) & (stats["PLAYER_ID"].isin(active_ids))].copy()
     stats["custom_score_pg"] = stats.apply(_score_row, axis=1)
+    stats["stats_basis"] = season
+    stats["missed_last_season"] = False
+    stats["last_season_gp"] = stats["GP"]
+    stats["durability_gp"] = stats["GP"]
 
     # Late-season form — captures role/usage changes heading into the offseason.
     late = late[late["GP"] >= MIN_LATE_GP].copy()
@@ -61,6 +67,29 @@ def get_player_pool():
     stats["yoy_trend"] = (stats["custom_score_pg"] - stats["prior_score"]).round(1)
     stats["min_trend"] = (stats["late_min"] - stats["MIN"]).round(1)
 
+    # Returners: veterans on a current roster who missed all or most of last season.
+    # Seeding the pool from last season's box scores alone made them invisible — Haliburton,
+    # Lillard and Irving among them — even though they are some of the most consequential
+    # prices in an auction. They are valued on the season before, and their availability is
+    # discounted by averaging in the lost season so a full Achilles year isn't ignored.
+    returners = raw_prior[
+        (raw_prior["GP"] >= MIN_PRIOR_GP)
+        & (raw_prior["PLAYER_ID"].isin(active_ids))
+        & (~raw_prior["PLAYER_ID"].isin(set(stats["PLAYER_ID"])))
+    ].copy()
+    if not returners.empty:
+        returners["custom_score_pg"] = returners.apply(_score_row, axis=1)
+        returners["AGE"] = returners["AGE"] + 1
+        returners["stats_basis"] = prior_season
+        returners["missed_last_season"] = True
+        returners["last_season_gp"] = returners["PLAYER_ID"].map(last_gp).fillna(0).astype(int)
+        returners["durability_gp"] = (returners["GP"] + returners["last_season_gp"]) / 2
+        for col in ("late_score", "late_min", "prior_score", "prior_min",
+                    "late_trend", "yoy_trend", "min_trend"):
+            returners[col] = float("nan")
+        # reindex, not strict selection: nba_api's columns drift between seasons.
+        stats = pd.concat([stats, returners.reindex(columns=stats.columns)], ignore_index=True)
+
     stats["current_team"] = stats["PLAYER_ID"].map(current_team)
     stats["team_changed"] = stats["current_team"] != stats["TEAM_ABBREVIATION"]
 
@@ -68,6 +97,7 @@ def get_player_pool():
         "PLAYER_ID", "PLAYER_NAME", "TEAM_ABBREVIATION", "current_team", "team_changed", "AGE",
         "GP", "MIN", "PTS", "REB", "AST", "STL", "BLK", "TOV", "FG3M",
         "custom_score_pg", "late_score", "late_trend", "prior_score", "yoy_trend", "min_trend",
+        "stats_basis", "missed_last_season", "last_season_gp", "durability_gp",
     ]
     return stats[cols].rename(columns={"TEAM_ABBREVIATION": "last_season_team"}).sort_values(
         "custom_score_pg", ascending=False
@@ -107,6 +137,9 @@ def get_rookie_pool(stats_pool, position_map=None):
 def describe_trend(row):
     """Compact human/LLM-readable trajectory summary for one player."""
     parts = []
+    if row.get("missed_last_season") == True:  # == not `is`: values may be numpy bools or NaN
+        return (f"MISSED last season ({int(row['last_season_gp'])} GP) — valued on "
+                f"{row['stats_basis']} ({int(row['GP'])} GP); return-from-injury risk")
     if row["yoy_trend"] == row["yoy_trend"]:  # not NaN
         direction = "up" if row["yoy_trend"] > 0 else "down"
         parts.append(
@@ -138,7 +171,9 @@ def compute_auction_values(df, total_rostered=TOTAL_ROSTERED, total_budget=TOTAL
     """Value-over-replacement-player $1-$200 auction dollar allocation, adjusted for
     availability."""
     df = df.copy()
-    df["durability"] = df["GP"].apply(durability_factor)
+    # Returners carry a durability_gp that averages in the season they missed.
+    basis_gp = df["durability_gp"].fillna(df["GP"]) if "durability_gp" in df else df["GP"]
+    df["durability"] = basis_gp.apply(durability_factor)
     df["adj_score"] = df["custom_score_pg"] * df["durability"]
     df = df.sort_values("adj_score", ascending=False).reset_index(drop=True)
 

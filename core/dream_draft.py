@@ -110,7 +110,8 @@ def budget_shape(board, budget=AUCTION_BUDGET_PER_TEAM, roster_spots=13):
         elif headroom < 100:
             verdict = "Comfortable — real money left for flex and bench"
         else:
-            verdict = "Underspending; unspent budget is forfeited, so trade up somewhere"
+            verdict = ("Underspending; leftover money only buys opening waiver priority "
+                       "(worth $1-2), so trade up somewhere")
         rows.append({
             "If you land every": tier,
             "Cost of 5 base slots": round(five, 1),
@@ -151,15 +152,25 @@ def strategy_notes(board):
          "players you should be buying."),
         ("Durability is strategy, not preference",
          f"With a 45-add season cap and 4 per week across the league, the wire cannot repair a broken "
-         f"roster. Every target on this board played {MIN_GAMES}+ games last season."),
+         f"roster. Every target on this board played {MIN_GAMES}+ games in his most recent season "
+         f"with stats."),
         ("Nominate to drain",
          "Open by nominating expensive players you do not want. Rivals commit budget early, and the "
          "mid-priced band where value per dollar peaks gets cheaper for you."),
         ("Do not buy a superstar by default",
          "The most expensive players consume a quarter to a third of the budget for one roster slot. "
-         "Check the Draft Plan tab: if two mid-tier targets together project more than one star at the "
-         "same price, take the two."),
+         "Check the All Players tab: if two mid-tier targets together project more than one star at "
+         "the same price, take the two."),
         ("Late draft",
          "Once rivals hit their $1 maximums they can only win uncontested players. Useful bodies clear "
          "at a dollar late, so do not panic-spend the middle."),
+        ("End with a dollar or two",
+         "Leftover auction money doesn't become FAAB, but the team with the most left over gets top "
+         "waiver priority for the post-draft waiver run, the largest free pool of the year. Prefer "
+         "finishing at $2 over spending your last dollar on a 13th man you'll cut in November. "
+         "Don't hoard more than that."),
+        ("Returners are the biggest edge",
+         "Players who missed last season (missed_last_season = TRUE) are valued on the season before "
+         "and discounted for the lost year. Check community_read for recovery status: a returner who "
+         "is cleared and practicing is the room's most common under-bid."),
     ], columns=["Principle", "Detail"])

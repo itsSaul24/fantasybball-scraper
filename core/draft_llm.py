@@ -6,7 +6,10 @@ from collections import Counter
 from core.llm import ask_gemini, last_token_usage
 from core.budget import estimate_cost, DRAFT_BUDGET_USD
 from core.db import get_today_spend
-from core.league_rules import MIN_BID, AUCTION_BUDGET_PER_TEAM
+from core.league_rules import (
+    MIN_BID, AUCTION_BUDGET_PER_TEAM, NUM_TEAMS, ROSTER_SPOTS, SCORING,
+    TOTAL_LEAGUE_BUDGET, TOTAL_ROSTERED,
+)
 from core.draft_valuation import describe_trend
 
 # Draft prep runs once a season against a large budget — buy the deeper reasoning.
@@ -74,9 +77,12 @@ def _build_batch_prompt(batch_df, context_map, scarcity_text=""):
         pos = row.get("position") or "?"
         eligible = row.get("eligible") or ""
         elig_note = f" [eligible: {eligible}]" if eligible else ""
+        returning = row.get("missed_last_season") == True
+        basis = (f"{row['stats_basis']} per-game (RETURNER — missed last season, "
+                 f"{int(row['last_season_gp'])} GP)" if returning else "Last season per-game")
         lines.append(
             f"""- {row['PLAYER_NAME']} ({pos}, {row['current_team']}{team_note}), age {row['AGE']:.0f}{elig_note}
-    Last season per-game: {row['PTS']:.1f}p / {row['REB']:.1f}r / {row['AST']:.1f}a / """
+    {basis}: {row['PTS']:.1f}p / {row['REB']:.1f}r / {row['AST']:.1f}a / """
             f"""{row['STL']:.1f}s / {row['BLK']:.1f}b / {row['TOV']:.1f}to / {row['FG3M']:.1f} 3pm """
             f"""in {int(row['GP'])} GP, {row['MIN']:.1f} mpg
     League-scored value: {row['custom_score_pg']:.1f} fpts/g """
@@ -93,15 +99,16 @@ def _build_batch_prompt(batch_df, context_map, scarcity_text=""):
 manager will have OPEN IN FRONT OF THEM during a live auction. Every word you write should
 help them decide, in ten seconds, whether the current bid is a bargain or a trap.
 
-LEAGUE: 14 teams, $200 budget each, 13 roster spots, one head-to-head matchup per week.
-SCORING: PTS 1.0, REB 1.2, AST 1.5, STL 3.0, BLK 3.0, TOV -1.0, made 3s +0.5 bonus.
+LEAGUE: {NUM_TEAMS} teams, ${AUCTION_BUDGET_PER_TEAM} budget each, {ROSTER_SPOTS} roster spots, one head-to-head matchup per week.
+SCORING: PTS {SCORING['PTS']}, REB {SCORING['REB']}, AST {SCORING['AST']}, STL {SCORING['STL']}, BLK {SCORING['BLK']}, TOV {SCORING['TOV']}, made 3s +{SCORING['FG3M']} bonus.
 Field goals and free throws (attempted AND made) are worth ZERO. Two consequences you must
 reason from: (a) inefficient high-volume shooters are not punished at all, so chuckers are
-underrated here; (b) steals and blocks at 3.0 are enormous — a 2.0 stocks/game player earns
-6 fpts/g from that alone, which is worth more than 5 rebounds.
-MARKET CONTEXT: $2,800 total across 182 rostered players (~$15 avg). Elite players go
+underrated here; (b) steals and blocks at {SCORING['STL']} are enormous — a 2.0 stocks/game player earns
+{2 * SCORING['STL']:.0f} fpts/g from that alone, which is worth more than 5 rebounds.
+MARKET CONTEXT: ${TOTAL_LEAGUE_BUDGET:,} total across {TOTAL_ROSTERED} rostered players (~${TOTAL_LEAGUE_BUDGET / TOTAL_ROSTERED:.0f} avg). Elite players go
 $50-70; the back half of every roster is $1-3 filler. Money spent early is committed, not
 saved — every dollar over market on a star is a dollar missing from your middle class.
+Leftover money is not worth hoarding: it only buys opening waiver priority, worth a dollar or two.
 ROSTER SLOTS: PG, SG, SF, PF, C, G(PG/SG), F(SF/PF), UTIL x2, plus 4 bench and 2 IR.
 {scarcity_block}
 
@@ -134,6 +141,11 @@ HOW TO REASON — READ THE ROOM FIRST:
 - AVAILABILITY IS VALUE. The availability-adjusted score already discounts players who
   missed time, because weekly head-to-head pays nothing for games not played. A high
   per-game rate on 35 games is a luxury, not a foundation — price it accordingly.
+- RETURNERS ARE WHERE AUCTIONS ARE WON OR LOST. Players marked RETURNER missed last season
+  (usually a major injury), so their numbers are two seasons old and their mechanical value
+  is already discounted for the lost year. Recent discussion of their RECOVERY decides the
+  price: cleared and practicing in full is a buying opportunity the room will under-bid;
+  setbacks, minutes limits or a changed role mean the discount is deserved. Say which it is.
 - POSITIONAL SCARCITY CHANGES PRICE. A tight position means waiting gets punished and a
   modest premium is rational; a deep position means the same production will be available
   later for less, so bid conservatively and pivot.

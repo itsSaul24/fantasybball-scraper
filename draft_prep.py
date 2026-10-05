@@ -19,6 +19,7 @@ from core.draft_valuation import (
 from core.draft_scraper import scrape_for_draft
 from core.draft_llm import match_player_context, merge_context, refine_valuations
 from core.semantic_match import semantic_match_context
+from core.espn_data import settings_drift
 from core.positions import (
     get_position_map, attach_positions, positional_scarcity, format_scarcity_for_prompt,
 )
@@ -84,6 +85,19 @@ def run_draft_prep(run_id, start_time):
     pool = attach_history(pool, get_multiyear_history())
     pool = add_rate_metrics(pool)
 
+    print("\n[1c] Checking live ESPN settings against the rules this sheet prices on...")
+    try:
+        drift, espn_draft_date = settings_drift()
+    except Exception as e:
+        drift, espn_draft_date = [f"Could not read ESPN settings: {e}"], "unknown"
+    if drift:
+        print("  ⚠️  ESPN DOES NOT MATCH THE RULEBOOK — fix in LM Tools before the draft:")
+        for line in drift:
+            print(f"     - {line}")
+    else:
+        print("  ESPN settings match the rulebook.")
+    print(f"  ESPN draft date: {espn_draft_date}")
+
     print("\n[2/6] Adding ESPN positions and computing positional scarcity...")
     position_map = get_position_map()
     pool = attach_positions(pool, position_map)
@@ -123,9 +137,12 @@ def run_draft_prep(run_id, start_time):
           f"(embedding ${embed_cost:.4f})")
 
     if len(rookies):
-        discussed = rookies[rookies["PLAYER_ID"].map(lambda p: bool(context.get(p)))]
-        print(f"  {len(discussed)}/{len(rookies)} rookies have real discussion — keeping those")
+        # Require a name match, not just semantic proximity: semantic search always surfaces
+        # *something* above threshold, which let every rookie through.
+        discussed = rookies[rookies["PLAYER_ID"].map(lambda p: bool(keyword_context.get(p)))]
+        print(f"  {len(discussed)}/{len(rookies)} rookies are named in discussion — keeping those")
         pool = pd.concat([pool, discussed], ignore_index=True)
+    pool["missed_last_season"] = pool["missed_last_season"].fillna(False).astype(bool)
 
     refine_n = LLM_REFINE_TOP_N or len(pool)
     print(f"\n[5/6] LLM-refining {refine_n} players in batches of {BATCH_SIZE}...")
@@ -144,7 +161,8 @@ def run_draft_prep(run_id, start_time):
     history_cols = [c for c in result_df.columns if c.startswith(("fp_20", "gp_20"))]
     columns = [
         "rank", "PLAYER_NAME", "position", "eligible", "current_team", "team_changed",
-        "AGE", "is_rookie", "tier", "trend", "market_vs_value",
+        "AGE", "is_rookie", "missed_last_season", "stats_basis", "last_season_gp",
+        "tier", "trend", "market_vs_value",
         "steal", "target", "walk_away", "mechanical_value",
         "community_read", "why", "risk", "live_note", "trajectory",
         "career_arc", "fp_trend_5y", "fp_peak", "fp_peak_season", "pct_of_peak",
@@ -180,6 +198,8 @@ def run_draft_prep(run_id, start_time):
             "LLM model": "gemini-3.7-flash (thinking: high)",
             "estimated cost USD": round(total_cost, 4),
             "runtime minutes": round(duration / 60, 1),
+            "ESPN draft date": espn_draft_date,
+            "ESPN vs rulebook": ("MISMATCH — " + "; ".join(drift)) if drift else "aligned",
         },
     )
 
