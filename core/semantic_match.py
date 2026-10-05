@@ -1,4 +1,5 @@
 import os
+import time
 import unicodedata
 from datetime import datetime
 import numpy as np
@@ -23,6 +24,28 @@ def _norm(text):
     text = unicodedata.normalize("NFKD", text)
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
 
+EMBED_MAX_ATTEMPTS = 8
+EMBED_BACKOFF_START_S = 15
+EMBED_BACKOFF_CAP_S = 120
+
+def _embed_batch(client, batch, config):
+    """One batch with exponential backoff. The SDK's own retry gives up within seconds, but
+    a 429 on the embedding model can last minutes while generation keeps working. Billing
+    failures (402) are not retried: waiting cannot fix an empty balance."""
+    delay = EMBED_BACKOFF_START_S
+    for attempt in range(1, EMBED_MAX_ATTEMPTS + 1):
+        try:
+            return client.models.embed_content(model=EMBED_MODEL, contents=batch, config=config)
+        except Exception as e:
+            code = getattr(e, "code", None)
+            retryable = code == 429 or (isinstance(code, int) and code >= 500)
+            if not retryable or attempt == EMBED_MAX_ATTEMPTS:
+                raise
+            print(f"  Embedding API returned {code} (attempt {attempt}/{EMBED_MAX_ATTEMPTS}); "
+                  f"retrying in {delay}s...")
+            time.sleep(delay)
+            delay = min(delay * 2, EMBED_BACKOFF_CAP_S)
+
 def embed_texts(texts, dim=EMBED_DIM):
     """Batched embeddings. Returns (N, dim) array and an estimated token count
     (the API does not expose exact usage for embeddings)."""
@@ -32,7 +55,7 @@ def embed_texts(texts, dim=EMBED_DIM):
     char_count = 0
     for i in range(0, len(texts), EMBED_BATCH_SIZE):
         batch = texts[i:i + EMBED_BATCH_SIZE]
-        result = client.models.embed_content(model=EMBED_MODEL, contents=batch, config=config)
+        result = _embed_batch(client, batch, config)
         vectors.extend(e.values for e in result.embeddings)
         char_count += sum(len(t) for t in batch)
     return np.array(vectors), char_count // 4
