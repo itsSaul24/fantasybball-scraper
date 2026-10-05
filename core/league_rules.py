@@ -1,4 +1,5 @@
-# From league-rulebook.html — 14-team H2H points auction, 2026-27 season.
+# From league-rulebook.html — H2H points auction, 2026-27 season. The rulebook was written
+# for 14 teams; the league is confirmed at 10, which is what the numbers below use.
 # Custom scoring deliberately zeroes shooting attempts/makes (no efficiency penalty)
 # and pays defense (STL/BLK) and playmaking (AST) above ESPN's default weights.
 
@@ -16,11 +17,11 @@ import os
 
 # League size is set at draft time and can change between seasons — override with env
 # vars rather than editing code.
-NUM_TEAMS = int(os.environ.get("LEAGUE_NUM_TEAMS", "14"))
+NUM_TEAMS = int(os.environ.get("LEAGUE_NUM_TEAMS", "10"))
 ROSTER_SPOTS = int(os.environ.get("LEAGUE_ROSTER_SPOTS", "13"))  # excludes the 2 IR slots
 AUCTION_BUDGET_PER_TEAM = int(os.environ.get("LEAGUE_AUCTION_BUDGET", "200"))
-TOTAL_LEAGUE_BUDGET = NUM_TEAMS * AUCTION_BUDGET_PER_TEAM  # 2800
-TOTAL_ROSTERED = NUM_TEAMS * ROSTER_SPOTS  # 182
+TOTAL_LEAGUE_BUDGET = NUM_TEAMS * AUCTION_BUDGET_PER_TEAM  # 2,000 at 10 teams
+TOTAL_ROSTERED = NUM_TEAMS * ROSTER_SPOTS  # 130 at 10 teams
 MIN_BID = 1
 
 def format_scoring_for_prompt():

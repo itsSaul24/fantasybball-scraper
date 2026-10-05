@@ -106,7 +106,9 @@ reason from: (a) inefficient high-volume shooters are not punished at all, so ch
 underrated here; (b) steals and blocks at {SCORING['STL']} are enormous — a 2.0 stocks/game player earns
 {2 * SCORING['STL']:.0f} fpts/g from that alone, which is worth more than 5 rebounds.
 MARKET CONTEXT: ${TOTAL_LEAGUE_BUDGET:,} total across {TOTAL_ROSTERED} rostered players (~${TOTAL_LEAGUE_BUDGET / TOTAL_ROSTERED:.0f} avg). Elite players go
-$50-70; the back half of every roster is $1-3 filler. Money spent early is committed, not
+$50-70; only the last few slots on each roster are $1-3 filler. With {NUM_TEAMS} teams the
+league rosters just {TOTAL_ROSTERED} players, so the waiver wire stays deep and mid-tier players
+carry less scarcity premium than in larger leagues. Money spent early is committed, not
 saved — every dollar over market on a star is a dollar missing from your middle class.
 Leftover money is not worth hoarding: it only buys opening waiver priority, worth a dollar or two.
 ROSTER SLOTS: PG, SG, SF, PF, C, G(PG/SG), F(SF/PF), UTIL x2, plus 4 bench and 2 IR.

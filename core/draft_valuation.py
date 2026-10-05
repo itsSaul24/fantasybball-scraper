@@ -105,7 +105,7 @@ def get_player_pool():
 
 def get_rookie_pool(stats_pool, position_map=None):
     """Incoming rookies have no NBA box score, so the stats-driven pool drops them
-    entirely — yet in a 14-team league they get drafted and Reddit discusses them heavily.
+    entirely — yet the notable ones get drafted and Reddit discusses them heavily.
     Returns them as a separate, explicitly stats-less track valued from discussion only."""
     current = CommonAllPlayers(
         is_only_current_season=1, season=current_nba_season(), timeout=30

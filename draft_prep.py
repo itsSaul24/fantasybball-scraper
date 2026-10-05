@@ -122,7 +122,7 @@ def run_draft_prep(run_id, start_time):
 
     # Incoming rookies have no box score, so they never appear in the stats pool. Carry
     # forward only the ones the community actually discusses — if Reddit is silent on a
-    # rookie, he is not getting drafted in a 14-team league.
+    # rookie, he is not getting drafted in this league.
     rookies = get_rookie_pool(pool, position_map)
     if len(rookies):
         rookies = attach_positions(rookies, position_map)

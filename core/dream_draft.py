@@ -11,7 +11,7 @@ is already high on, which is where you get outbid or forced to overpay.
 """
 import pandas as pd
 
-from core.league_rules import SCORING, AUCTION_BUDGET_PER_TEAM
+from core.league_rules import SCORING, AUCTION_BUDGET_PER_TEAM, NUM_TEAMS
 
 BASE_POSITIONS = ["PG", "SG", "SF", "PF", "C"]
 TIER_LABELS = ["Primary", "Fallback", "Value"]
@@ -151,9 +151,9 @@ def strategy_notes(board):
          "inefficient scorer here. Managers carrying category-league instincts will fade exactly the "
          "players you should be buying."),
         ("Durability is strategy, not preference",
-         f"With a 45-add season cap and 4 per week across the league, the wire cannot repair a broken "
-         f"roster. Every target on this board played {MIN_GAMES}+ games in his most recent season "
-         f"with stats."),
+         f"The wire is reasonably deep in a {NUM_TEAMS}-team league, but the 45-add season cap and "
+         f"4 per week mean you can't stream your way around an injury-prone roster. Every target on "
+         f"this board played {MIN_GAMES}+ games in his most recent season with stats."),
         ("Nominate to drain",
          "Open by nominating expensive players you do not want. Rivals commit budget early, and the "
          "mid-priced band where value per dollar peaks gets cheaper for you."),

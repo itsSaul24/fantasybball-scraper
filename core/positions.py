@@ -1,6 +1,6 @@
 import unicodedata
 from core.espn_data import get_league
-from core.league_rules import NUM_TEAMS
+from core.league_rules import NUM_TEAMS, TOTAL_ROSTERED
 
 # Starting slots per team from the rulebook: PG SG SF PF C G F UTIL UTIL.
 # G and F are flex, so demand at a base position exceeds its dedicated slot count.
@@ -37,11 +37,11 @@ def attach_positions(df, position_map):
     df["eligible"] = ["/".join(position_map.get(_norm(n), ("", []))[1]) for n in df["PLAYER_NAME"]]
     return df
 
-def positional_scarcity(df, top_n=182):
+def positional_scarcity(df, top_n=TOTAL_ROSTERED):
     """How deep each position runs among the players who will actually be rostered.
 
-    Auction strategy is positional: if only nine centers clear replacement level and
-    fourteen teams each need one, centers command a premium and waiting is punished.
+    Auction strategy is positional: if only nine centers clear replacement level and every
+    team needs one, centers command a premium and waiting is punished.
     Returns {position: {...}} summarizing supply, demand and value concentration."""
     pool = df.head(top_n)
     demand = dict(STARTERS_PER_TEAM)
